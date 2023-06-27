@@ -1,0 +1,60 @@
+/*
+Iman Raissi-Dehkordi, 2019-09-04
+=============================
+
+Iman Raissi-Dehkordi
+i.raissidehkordi@gmail.com
+
+*/
+
+
+// define baseline
+var basestart = '2017-04-01';
+var baseend = '2018-03-01';
+
+// target date
+var targdate = '2019-04-15';
+
+// Z-score thresholds;
+var zvv_thd = -2.5;
+var zvh_thd = -2.5;
+
+// Historical open water probability threshold (%)
+var pow_thd = 90;
+
+// Histocial inundation probability threshold (%)
+var pin_thd = 25;
+
+// Import scripts
+var zscore = require('users/bdv/s1flood:zscore');
+var mapFloods = require('users/bdv/s1flood:mapFloods');
+
+// Define collection filters
+var filters = [
+  ee.Filter.listContains("transmitterReceiverPolarisation", "VV"),
+  ee.Filter.listContains("transmitterReceiverPolarisation", "VH"),
+  ee.Filter.equals("instrumentMode", "IW"),
+  ee.Filter.bounds(geometry),
+  ee.Filter.date('2017-01-01', ee.Date(targdate).advance(1, 'day'))
+  ];
+  
+// Load S1 collection with filters
+var s1 = ee.ImageCollection('COPERNICUS/S1_GRD')
+  .filter(filters);
+
+// Compute Z-scores per orbital direction
+var z_iwasc = zscore.calc_zscore(s1, basestart, baseend, 'IW', 'ASCENDING');
+var z_iwdsc = zscore.calc_zscore(s1, basestart, baseend, 'IW', 'DESCENDING');
+var z = ee.ImageCollection(z_iwasc.merge(z_iwdsc))
+  .sort('system:time_start');
+
+// Run flood mapping algorithm on latest Z-score
+var floods = mapFloods.mapFloods(z.mosaic(), zvv_thd, zvh_thd, pow_thd, pin_thd, false);
+
+///Map.setCenter(-77.2167, 24.4892, 9);
+
+Map.addLayer(
+  floods.updateMask(floods.gt(0)), // Remove background "non-water" value
+  {min: 0, palette: mapFloods.palette}, // be sure to set min to 0 if background is masked
+  'Flood Map, 2019-09-04'
+  );
